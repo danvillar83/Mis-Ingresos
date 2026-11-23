@@ -8,13 +8,19 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const isMonth = v => /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
   const isDate = v => /^\d{4}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(v) && !Number.isNaN(Date.parse(v+'T12:00:00'));
+  const isReturnLabel = detail => /^devoluci[oó]n(?:es)?$/i.test(String(detail||'').trim());
   const empty = () => ({version:1,records:[],taxByMonth:{}});
   let db = empty(), editId = null, pending = [], damagedStore = false;
 
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) db = normalize(JSON.parse(raw));
+      if (raw) {
+        const incoming = JSON.parse(raw);
+        db = normalize(incoming);
+        // Reclasificación semántica de v11/v12: solo cambia la categoría, no cifras ni identificadores.
+        if (incoming.records.some((r,i)=>r.kind!==db.records[i].kind)) save();
+      }
     } catch (err) {
       console.error(err);
       damagedStore = true;
@@ -26,10 +32,12 @@
     if (!source || !Array.isArray(source.records) || !source.taxByMonth || typeof source.taxByMonth !== 'object') throw Error('Formato de respaldo empresarial no válido.');
     if (source.records.length > 250000) throw Error('El respaldo contiene demasiados movimientos.');
     const records = source.records.map(r => {
-      if (!r || !isMonth(r.period) || !isDate(r.date) || !['day','extra','expense'].includes(r.kind)) throw Error('Movimiento con fecha o tipo inválido.');
+      if (!r || !isMonth(r.period) || !isDate(r.date) || !['day','pickup','return','extra','expense'].includes(r.kind)) throw Error('Movimiento con fecha o tipo inválido.');
       const income = C.integer(r.income), expense = C.integer(r.expense);
       if (income && expense) throw Error('Un movimiento no puede ser ingreso y egreso a la vez.');
-      return {id:String(r.id||uid()),period:r.period,date:r.date,kind:r.kind,detail:String(r.detail||'').slice(0,160),income,expense,
+      const detail=String(r.detail||'').slice(0,160);
+      const kind=isReturnLabel(detail)&&['extra','pickup'].includes(r.kind)?'return':r.kind;
+      return {id:String(r.id||uid()),period:r.period,date:r.date,kind,detail,income,expense,
         packages:Number.isSafeInteger(r.packages)&&r.packages>=0?r.packages:0,category:String(r.category||'Otros').slice(0,60),iec:C.integer(r.iec||0),
         sourceKey:String(r.sourceKey||''),sourceFile:String(r.sourceFile||''),originalDate:String(r.originalDate||''),createdAt:String(r.createdAt||now())};
     });
@@ -103,12 +111,16 @@
   }
   function render() {
     const rows=dataForMonth(),income=sum(rows,'income'),expense=sum(rows,'expense'),fuel=rows.filter(r=>r.category==='Combustible'),shownFilter=$('bizFilter').value;
+    $('bizDeliveryIncome').textContent=money(sum(rows.filter(r=>r.kind==='day'),'income'));
+    $('bizPickupIncome').textContent=money(sum(rows.filter(r=>r.kind==='pickup'),'income'));
+    $('bizReturnIncome').textContent=money(sum(rows.filter(r=>r.kind==='return'),'income'));
+    $('bizOtherIncome').textContent=money(sum(rows.filter(r=>r.kind==='extra'),'income'));
     $('bizIncome').textContent=money(income);$('bizExpense').textContent=money(expense);$('bizProfit').textContent=money(income-expense);$('bizFuel').textContent=money(sum(fuel,'expense'));
     $('bizPackages').textContent=rows.reduce((n,r)=>n+r.packages,0)+' paquetes identificados';
     $('bizImportStatus').textContent=db.records.length?'Historial empresarial: '+db.records.length+' movimientos registrados en total. En este mes: '+rows.length+'. Los documentos tributarios deben revisarse aparte.':'Importa los reportes CSV de mensajería para cargar tu historial. Los gastos del hogar permanecen intactos.';
-    const ordered=rows.filter(r=>shownFilter==='all'||(shownFilter==='income'?r.kind!=='expense':r.kind==='expense')).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));
+    const ordered=rows.filter(r=>shownFilter==='all'||(shownFilter==='income'?r.kind!=='expense':r.kind===shownFilter)).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));
     $('bizCount').textContent=String(ordered.length);
-    $('bizList').innerHTML=ordered.length?ordered.map(r=>`<div class="item"><div><h3>${esc(r.detail)}</h3><small>${esc(r.date)}${r.originalDate&&r.originalDate!==r.date?' · Fecha original: '+esc(r.originalDate):''}${r.sourceFile?' · '+esc(r.sourceFile):''}</small><div class="tags"><span class="tag">${r.kind==='expense'?'Egreso':r.kind==='extra'?'Ingreso adicional':'Entregas'}</span>${r.packages?`<span class="tag">${r.packages} paquetes</span>`:''}${r.kind==='expense'?`<span class="tag">${esc(r.category)}</span>`:''}${r.iec?`<span class="tag">IEC: ${money(r.iec)}</span>`:''}</div></div><div class="right"><strong class="${r.kind==='expense'?'negative':'positive'}">${r.kind==='expense'?'-':'+'}${money(r.income||r.expense)}</strong><div class="actions"><button class="secondary" type="button" data-act="edit" data-id="${esc(r.id)}">Editar</button><button class="secondary dangerbtn" type="button" data-act="delete" data-id="${esc(r.id)}">Eliminar</button></div></div></div>`).join(''):'<div class="empty">No hay movimientos de este tipo para el mes seleccionado.</div>';
+    $('bizList').innerHTML=ordered.length?ordered.map(r=>`<div class="item"><div><h3>${esc(r.detail)}</h3><small>${esc(r.date)}${r.originalDate&&r.originalDate!==r.date?' · Fecha original: '+esc(r.originalDate):''}${r.sourceFile?' · '+esc(r.sourceFile):''}</small><div class="tags"><span class="tag">${r.kind==='expense'?'Egreso':r.kind==='pickup'?'Retiro':r.kind==='return'?'Devolución':r.kind==='extra'?'Otros ingresos':'Entrega'}</span>${r.packages?`<span class="tag">${r.packages} paquetes</span>`:''}${r.kind==='expense'?`<span class="tag">${esc(r.category)}</span>`:''}${r.iec?`<span class="tag">IEC: ${money(r.iec)}</span>`:''}</div></div><div class="right"><strong class="${r.kind==='expense'?'negative':'positive'}">${r.kind==='expense'?'-':'+'}${money(r.income||r.expense)}</strong><div class="actions"><button class="secondary" type="button" data-act="edit" data-id="${esc(r.id)}">Editar</button><button class="secondary dangerbtn" type="button" data-act="delete" data-id="${esc(r.id)}">Eliminar</button></div></div></div>`).join(''):'<div class="empty">No hay movimientos de este tipo para el mes seleccionado.</div>';
     taxInputs(taxForMonth(),income);
   }
 
@@ -128,7 +140,8 @@
         // Exportación anterior: la fecha está desplazada a la segunda columna; Nota contiene los paquetes.
         date=r.Tipo;originalDate=date;kind='day';packages=Number(detail);detail=packages+' paquetes (ingreso no informado)';anomalous++;zero++;
       }
-      if(!isDate(date)||!['day','extra','expense'].includes(kind)||income&&expense)throw Error(file+': fila '+line+' con fecha, tipo o montos incompatibles.');
+      if(!isDate(date)||!['day','pickup','return','extra','expense'].includes(kind)||income&&expense)throw Error(file+': fila '+line+' con fecha, tipo o montos incompatibles.');
+      if(kind==='extra'&&isReturnLabel(detail))kind='return';
       if(!date.startsWith(reportMonth))anomalous++;
       if(!income&&!expense&&!packages&&!legacy)zero++;
       const category=kind!=='expense'?'Ingresos':/gasol|benc|combust|di[eé]sel|petr[oó]leo/i.test(detail)?'Combustible':/tag|peaje/i.test(detail)?'Peajes/TAG':'Otros';

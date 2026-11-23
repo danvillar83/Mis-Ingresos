@@ -1,4 +1,4 @@
-const CACHE='mis-finanzas-v11-20261123';
+const CACHE='mis-finanzas-v13-20261123';
 const ASSETS=['./','./index.html','./manifest.json','./empresa.css','./csv-tools.js','./empresa.js','./icon.svg','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{
