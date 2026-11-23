@@ -1,0 +1,16 @@
+/* Zona de la E.I.R.L.: no altera los estilos ni los datos del hogar. */
+.empresa .business-badge{background:#dbeafe;color:#1d4ed8;border-radius:9px;font-size:11px;font-weight:800;padding:6px 9px}
+.empresa p{margin:0 0 12px}
+.empresa input[type="date"],.empresa input[type="file"]{width:100%;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;padding:10px;min-width:0;color:#0f172a}
+.empresa input:disabled{background:#e2e8f0;color:#475569}
+.empresa .business-list{max-height:440px;overflow:auto}
+.empresa .business-list .item{align-items:center}
+.empresa .business-list .item small{display:block;color:#64748b}
+.empresa .business-list .item .right strong{font-variant-numeric:tabular-nums}
+.empresa .business-list .item .right strong.negative{color:#dc2626}
+.empresa .business-list .item .right strong.positive{color:#059669}
+.empresa #bizPreview{white-space:pre-line}
+.empresa #bizFilter{width:auto;max-width:48%;padding:8px}
+nav button{font-size:10px;padding:5px 1px}
+nav button span:first-child{font-size:20px}
+@media(max-width:390px){nav button{font-size:9px;letter-spacing:-.2px}.empresa .grid2{grid-template-columns:1fr}}
